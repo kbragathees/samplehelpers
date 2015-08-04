@@ -19,24 +19,20 @@ Solves TSP as a A-star problem with MST as a heuristic function.
 NP-Complete or NP-Hard ?
 """
 import random
-import hashlib
-
 from numpy import *
 from copy import deepcopy
 
 tspglobal = None
 
-testlist = [[3, 0],
-    [3, 3],
-    [4, 4],
-    [1, 2],
-    [1, 4],
-    [4, 3],
-    [2, 1],
-    [0, 4],
-    [1, 3]]
-
-#testlist = [[0,0], [1,1], [2,2], [3,3], [4,4]]
+testlist = {0:[3, 0],
+    1:[3, 3],
+    2:[4, 4],
+    3:[1, 2],
+    4:[1, 4],
+    5:[4, 3],
+    6:[2, 1],
+    7:[0, 4],
+    8:[1, 3]}
 
 class Neighbour:
     location = None
@@ -46,47 +42,17 @@ class Neighbour:
     parent = None
     
 class Node:
-    identifier = None
     location = None
     visited = False
-    neighbours = []  #(location, edgecost, mstcost)
+    neighbours = []  
     mstcost = None
     parent = None
-    #connectedNodes = [] assuming that the every node is connected to each other
 
 def MakeNode(location, parent):
     node = Node()
     node.location = location
     node.parent = parent
     return node
-
-def InitTSPTree(numnodes, maxconnections=3):
-    """
-    maxconnections : future
-    current : all nodes are connected to every other node
-    """
-    locations = []
-    if 0:
-        for i in range(1, numnodes+1):
-            node = Node()
-            node.location = [random.randint(1, nodes), random.randint(1, nodes)]
-            locations.append(node)
-    else:
-        for i in testlist:
-            node = Node()
-            node.location = i
-            locations.append(node)
-
-    for node in locations:
-        neighbours = GetNeigbours(node.location, locations)
-        node.neighbours = []
-        for neighbour in neighbours:
-            n = Neighbour()
-            n.location = neighbour.location
-            n.edgecost = linalg.norm(array(n.location) - array(node.location))
-            node.neighbours.append(n)
-    return locations
-
 
 def GetNeigbours(value, locations):
     """
@@ -100,13 +66,6 @@ def GetNeigbours(value, locations):
     return graph
     
     
-def CheckLocationPresent(tree, location):
-    for node in tree:
-        if node.location == location:
-            return True
-    return False
-
-
 def CheckAllVisited(tree):
     for node in tree:
         if node.visited == False:
@@ -160,23 +119,22 @@ def ComputeMST(subtree, rootnode):
     cost = 0.0
     for node in spannedtree[1:]:
         cost += linalg.norm(array(node.location) - array(node.parent.location))
-    #print "Cost", cost
     return cost
 
-def ComputeMST2(location, treelist):
-    values = location[location.keys()[0]][0]
-    newtreelist = deepcopy(treelist)
+def ComputeMST2(node):
 
-    print len(newtreelist)
-    if len(newtreelist) < 2:
+    indices = where(node.visitedNodes == 0)[0]
+    if len(indices) < 2:
         return 0
-    if len(newtreelist) < 3:
-        return linalg.norm(array(newtreelist[1]) - array(newtreelist[0]))
+    if len(indices) < 3:
+        return linalg.norm(array(testlist[indices[0]]) - array(testlist[indices[1]]))
+
     subtree = []
-    for value in newtreelist:
-        subtree.append(MakeNode(value, None))
+    for i in indices:
+        subtree.append(MakeNode(testlist[i], None))
+
     for node in subtree:
-        neighbours = GetNeigbours(node.location, locations)
+        neighbours = GetNeigbours(node.location, subtree)
         node.neighbours = []
         for neighbour in neighbours:
             n = Neighbour()
@@ -184,117 +142,76 @@ def ComputeMST2(location, treelist):
             n.edgecost = linalg.norm(array(n.location) - array(node.location))
             node.neighbours.append(n)
 
-    
     return ComputeMST(subtree, subtree[0])
-        
-        
-def FindNodeFromNeighbour(neighbour, locations):
-    for ilocation, location in enumerate(locations):
-        if neighbour.location == location.location:
-            return ilocation
 
-def RemoveNeighbourFromNode(neighbour, node):
-    neighbours  = node.neighbours
-    for n in neighbours:
-        if n.location == neighbour.location:
-            neighbours.remove(n)
-            break
-    return node
+class TSPNode:
+    visitedNodes = zeros(len(testlist))
+    currentNode = None
+    parent = None
+    startNode = None
+    gcost = 0.
+    fcost = 0.
+    hcost = 0.
 
-def RemoveNodeFromTree(node, tree):
-    tree2 = deepcopy(tree)
-    for n in tree2:
-        if n.location == node.location:
-            tree2.remove(n)
-            break
-    return tree2
+
+def UpdateState(states):
+    """
+    equivalent of AddChildren
+    states structure :  [VistedNodes, currentnode, parent, startnode, g, f, h]
+    """
+    currentstate = states.visitedNodes
+    indices = where(currentstate == 0)[0]
+    neighbours = []
     
-def CheckNode(nodelist, node):
-    for n in nodelist:
-        if node.location == n.location:
-            return True
-    return False
+    for index in indices:
+        node = TSPNode()
+        node = deepcopy(states)
+        node.visitedNodes[index] = max(node.visitedNodes) + 1
+        node.currentNode = index
+        node.parent = states.currentNode
+        stepcost = linalg.norm(array(testlist[index]) - array(testlist[node.parent]))
+        node.gcost += stepcost
+        node.hcost = ComputeMST2(node)
+        node.fcost = node.gcost + node.hcost + linalg.norm(array(testlist[index]) - array(testlist[0]))
+        neighbours.append(node)
 
-def CheckGoalTest(tree):
-    for node in tree:
-        if node.visited == False:
-            return False
-    return True
+    return neighbours
+    
+def popmin2(listofnodes):
+    bestdist = inf
+    minnode = None
+    for node in listofnodes:
+        if node.fcost < bestdist:
+            bestdist = node.fcost
+            minnode = node
+    return minnode
 
-def popmin(dictionary):
-    bestdistance = inf
-    savekey = None
-    for d in dictionary:
-        if dictionary[d][1] < bestdistance:
-            savekey = d
-            save = {d:dictionary[d]}
-            bestdistance = deepcopy(dictionary[d][1])
-    if savekey is not None:
-        dictionary.pop(savekey)
-        return save, savekey
-    else:
-        return None, savekey
-        
 
-def SolveTSP2(tree):
+def SolveTSP2():
     """
     used with Astar
     """
-    solvertree = deepcopy(tree)
-    def AddChildren(location, locationlist):
-        value = location[location.keys()[0]]
-        gcost = value[3]
-        poses = value[0]
-        childtestlist = deepcopy(testlist)
-        for pose in poses:
-            childtestlist.remove(pose)
-        children = []
-        for l in locationlist:
-            add = True
-            for pose in poses:
-                if l == pose:
-                    add = False
-            if add:
-                children.append(l)
-        #prepare node
-        childrendictionary = {}
-        for child in children:
-            newchildtestlist = deepcopy(childtestlist)
-            finaldict = deepcopy(poses)
-            finaldict.insert(0, child)
-            pathcost = 0.0
-            for ipose, individualposes in enumerate(finaldict[1:]):
-                pathcost += linalg.norm(array(individualposes) - array(finaldict[ipose]))
-            gcost = pathcost
-            newchildtestlist.remove(child)
-            mstcost = ComputeMST2({'1':[[child]]}, newchildtestlist) + linalg.norm(array(child) - array(testlist[0]))# the second heuristic allows to make a round trip 
-            fcost = gcost + mstcost 
-            childrendictionary[hashlib.md5(array(finaldict)).hexdigest()] = [finaldict, fcost, mstcost, gcost]
-
-        return childrendictionary
-
-    
-    listofnodes = {}
-    listofnodes[hashlib.md5(array(testlist[0])).hexdigest()] = [[testlist[0]], 10, 0, 0]
-    listofnodes[hashlib.md5(array(testlist[0])).hexdigest()][2] = ComputeMST2(listofnodes, testlist)
-    listofnodes[hashlib.md5(array(testlist[0])).hexdigest()][1] = listofnodes[hashlib.md5(array(testlist[0])).hexdigest()][2] + listofnodes[hashlib.md5(array(testlist[0])).hexdigest()][3]
+    listofnodes = []
+    staterep = zeros(len(testlist))
+    staterep[0] = 1
+    states = TSPNode()
+    states.visitedNodes = staterep
+    states.currentNode = 0
+    states.parent = None
+    states.startNode = 0
+    states.gcost = 0
+    states.hcost = ComputeMST2(states) 
+    states.fcost = states.gcost + states.fcost
+    listofnodes.append(states)
     while len(listofnodes) > 0:
-        minvalue = popmin(listofnodes)
-        pair = minvalue[0]
-        key = minvalue[1]
-        if len(pair[key][0]) >= len(testlist):
-            return pair
-        children = AddChildren(pair, testlist)
-        listofnodes.update(children)
-
+        minnode = popmin2(listofnodes)
+        listofnodes.remove(minnode)
+        if len(where(minnode.visitedNodes == 0)[0]) == 0:
+            return minnode
+        listofnodes.extend(UpdateState(minnode))
     
 if __name__=="__main__":
-    global tspglobal
-    nodes = 5
-    locations = InitTSPTree(nodes)
-    print "Given"
-    for n in locations:
-        print n.location
-    pair = SolveTSP2(locations)
-    print pair
-    
+    pair = SolveTSP2()
+    print "Sequence of visits"
+    print pair.visitedNodes.tolist()
+
